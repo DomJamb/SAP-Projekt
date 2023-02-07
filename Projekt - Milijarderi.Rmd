@@ -1,0 +1,633 @@
+---
+title: "Projekt - Milijarderi"
+author: "Samuel Lucić, Luka Glavinić, Ivan Kolar, Dominik Jambrović"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Učitavanje i provjera podataka
+
+Kako bismo započeli s deskriptivnom analizom, kao i provođenjem testova za provjeru određenih hipoteza, potrebno je prvo učitati podatke, provjeriti njihovu ispravnost i po potrebi izbaciti neispravne ili nepotpune podatke.
+
+```{r ucitavanje, echo=FALSE}
+billionaires <- read.csv(file = 'podatci/billionaires.csv')
+cat("Broj milijardera: ", dim(billionaires)[1], "\n")
+cat("Broj atributa: ", dim(billionaires)[2], "\n")
+```
+
+Možemo vidjeti da učitana tablica sadrži podatke o 2614 milijardera - njihova imena, količinu bogatstva, državljanstvo, način zarade bogatstva itd. Koristeći funkciju sapply, možemo vidjeti klase određenih stupaca tablice. Koristeći funkciju summary, za podatak o dobi milijardera možemo uočiti da je minimum negativan - negativna vrijednost dobi označava manjak tog podatka za konkretnog milijardera.  
+  
+Provjerit ćemo koliko je podataka u tablici označeno s NA, praznim nizom, nulom ili negativnom brojkom (interpretacija takvih oznaka je da su nedostajali potrebni podaci):
+
+```{r provjera nedostajuc, echo=FALSE}
+i <- 1
+for (col_name in names(billionaires)) { 
+  suma <- sum(is.na(billionaires[,i]) | billionaires[, i] == '' | (is.numeric(billionaires[, i]) & billionaires[, i] <= 0) | (is.character(billionaires[, i]) & billionaires[, i] == '0'))
+  if (suma > 0) {
+    cat('Ukupno nedostajućih vrijednosti za varijablu',col_name, ': ', suma, '\n')
+  }
+  i <- i + 1
+}
+```
+
+Ovisno o potrebama konkretnog zadatka, podatke označene s praznim nizom, nulom ili negativnom brojkom zamijenit ćemo s NA ili u potpunosti izbaciti iz podataka. Da odmah izbacujemo sve retke koji nemaju određeni podatak, uvelike bi si smanjili ukupan broj podataka.
+
+Nakon provjere i pročišćavanja podataka, možemo započeti s deskriptivnom analizom, kao i provjerom proizvoljnih hipoteza. Pri provođenju testiranja, odlučili smo da će razina značajnosti uvijek biti 0.05 - ako je P-vrijednost manja od 0.05, odbijat ćemo nultu hipotezu.
+
+\newpage
+
+### 1. zadatak, stara verzija
+
+Kako bismo provjerili postoje li kontinenti sa statistički značajno više milijardera, podatke ćemo prikazati koristeći barplot, a pritom ćemo koristiti podatke o regijama milijardera. Prvi korak pri ovakvoj analizi provjera je postoje li podaci o milijarderima koji nemaju podatak o pripadnoj regiji - nedostatak 1 podatka o regiji već smo utvrdili u prethodnom koraku pa tu provjeru nećemo ponavljati. Milijardere s nedostajućim podatkom o regiji izbacit ćemo iz tablice koju koristimo za odgovaranje na ovo pitanje.
+
+```{r eliminate billionaires without region data}
+billionaires.continents <- billionaires[billionaires$location.region != 0, ]
+```
+Nakon što smo iz podataka izbacili takve milijardere, određene ćemo regije mijenjanjem vrijednosti grupirati u nove skupine: regije "Middle East/North Africa" i "Sub-Saharan Africa" bit će zamijenjene vrijednošću "Africa", regije "East Asia" i "South Asia" bit će zamijenjene vrijednošću "Asia", a regija "Latin America" bit će zamijenjena vrijednošću "South America". Time će za svakog milijardera biti dostupan podatak o kontinentu s kojeg potječe. Ipak, treba uzeti u obzir i činjenicu da bi za određene regije (Latin America i Middle East/North Africa) bilo moguće odabrati i drugačije grupiranje.
+
+```{r group by continent}
+
+for (i in 1:length(billionaires.continents$location.region)) {
+  if (billionaires.continents$location.region[i] == "Middle East/North Africa" | billionaires.continents$location.region[i] == "Sub-Saharan Africa") {
+    billionaires.continents$location.region[i] <- "Africa"
+  } else if (billionaires.continents$location.region[i] == "East Asia" | billionaires.continents$location.region[i] == "South Asia") {
+    billionaires.continents$location.region[i] <- "Asia"
+  } else if (billionaires.continents$location.region[i] == "Latin America") {
+    billionaires.continents$location.region[i] <- "South America"
+  }
+}
+
+```
+
+Nakon eliminacije milijardera bez podataka o regiji i zamjene podataka o regiji s pripadnim kontinentima, tablicu ćemo podijeliti na 3 tablice ovisno o godini kojoj pripada određeni rank. Ovime osiguravamo da podaci iz zasebnih tablica vjerno prikazuju stvarno stanje pripadnih godina, kao i da naši prikazi i zaključci nisu pod utjecajem višestrukog pojavljivanja istih ljudi. Kako bismo što bolje mogli usporediti raspodjelu milijardera po kontinentima za zasebne godine, prikazat ćemo podatke kroz sve 3 godine koristeći 1 barplot.
+
+```{r barplot po kontinentima, echo=FALSE, out.width="85%", out.height="85%", fig.align='center'}
+billionaires.1996 <- billionaires.continents[billionaires.continents["year"] == 1996,] 
+billionaires.2001 <- billionaires.continents[billionaires.continents["year"] == 2001,]
+billionaires.2014 <- billionaires.continents[billionaires.continents["year"] == 2014,]
+
+v1 <- c(as.numeric(table(billionaires.1996$location.region)))
+v2 <- c(as.numeric(table(billionaires.2001$location.region)))
+v3 <- c(as.numeric(table(billionaires.2014$location.region)))
+
+data_matrix <- rbind(v1,v2,v3)
+par(mar = c(10, 5, 3, 3))
+barplot(data_matrix, beside=TRUE, name=names(table(billionaires.1996$location.region)), legend=c(1996, 2001, 2014), las=2, cex.names=1, main="Histogram milijardera po godinama")
+title(xlab="Kontinenti", line=8)
+title(ylab = "Broj milijardera", line=3)
+```
+Uočavamo velik porast broja milijardera u razdoblju 2001 - 2014 za sve kontinente, kao i podjelu u dvije grupe - Europa, Azija i Sjeverna Amerika imaju značajno veći broj milijardera naspram Afrike i Južne Amerike. Ova podjela veoma je vidljiva za podatke iz 2014. godine, ali je isti odnos grupa prisutan i za preostale dvije godine.
+Da imamo podatke o ukupnom broju stanovnika po regiji, mogli bismo provesti test nezavisnosti da provjerimo jesu li proporcije milijardera po kontinentu jednake za sve regije.  
+  
+Nažalost, nemamo dostupan taj podatak. Iako zbog nejednakosti broja stanovnika po kontinentu test goodness-of-fit korišten za usporedbu s uniformnom distribucijom nije najsmisleniji izbor, provest ćemo ga za svaku od godina.
+
+```{r goodness-of-fit, echo=FALSE}
+len <- length(v1)
+probs <- rep(1/len, len)
+
+cat('Broj milijardera po kontinentu 1996. godine: ', v1)
+chisq.test(v1, p=probs)
+cat('Broj milijardera po kontinentu 2001. godine: ', v2)
+chisq.test(v2, p=probs)
+cat('Broj milijardera po kontinentu 2014. godine: ', v3)
+chisq.test(v3, p=probs)
+```
+Na temelju veoma malih p-vrijednosti (puno manje od razine značajnosti 0.05), zaključujemo da broj milijardera po kontinentu ne možemo usporediti s uniformnom distribucijom - broj milijardera na određenim kontinentima značajno je veći od drugih (za sve tri godine).
+
+### 1. zadatak, nova verzija
+
+Kako bismo provjerili ima li neki kontinent značajno više milijardi tj. postoji li kontinent s prosjekom iznosa milijardi po milijarderu koji značajno odstupa od ostalih, prvo ćemo raspon bogatstva po kontinentima prikazati koristeći 3 boxplota, svaki za zasebnu godinu.
+
+```{r boxplot za regije, out.width="90%", out.height="90%", fig.align='center', echo=FALSE}
+par(mar = c(10, 5, 3, 3), cex.axis=0.7)
+boxplot(wealth.worth.in.billions~location.region, billionaires.1996, las=2, xlab="", ylab="", main="Prikaz raspona bogatstva po kontinentima 1996. godine")
+title(xlab="Kontinenti", line=6)
+title(ylab = "Raspon bogatstva", line=3)
+
+par(mar = c(10, 5, 3, 3), cex.axis=0.7)
+boxplot(wealth.worth.in.billions~location.region, billionaires.2001, las=2, xlab="", ylab="", main="Prikaz raspona bogatstva po kontinentima 2001. godine")
+title(xlab="Kontinenti", line=6)
+title(ylab = "Raspon bogatstva", line=3)
+
+par(mar = c(10, 5, 3, 3), cex.axis=0.7)
+boxplot(wealth.worth.in.billions~location.region, billionaires.2014, las=2, xlab="", ylab="", main="Prikaz raspona bogatstva po kontinentima 2014. godine")
+title(xlab="Kontinenti", line=6)
+title(ylab = "Raspon bogatstva", line=3)
+```
+
+Na prvi pogled, uočavamo da je sredina (medijan) bogatstva veoma blizu za sve kontinente, ali da određeni kontinenti (Europa, Sjeverna Amerika, Azija) imaju i velik broj stršećih vrijednosti - vrijednosti izvan gornjeg "brka" boxplota. Stršeće vrijednosti veoma velikih vrijednosti spljošćuju prikaz pa je zbog toga teško doći do pravilnog zaključka. Zbog toga ćemo prikazati boxplotove i bez njih.
+
+```{r boxplot wo outliers, out.width="90%", out.height="90%", fig.align='center', echo=FALSE}
+par(mar = c(10, 5, 3, 3), cex.axis=0.7)
+boxplot(wealth.worth.in.billions~location.region, billionaires.1996, las=2, xlab="", ylab="", main="Prikaz raspona bogatstva po kontinentima 1996. godine", outline=FALSE)
+title(xlab="Kontinenti", line=6)
+title(ylab = "Raspon bogatstva", line=3)
+
+par(mar = c(10, 5, 3, 3), cex.axis=0.7)
+boxplot(wealth.worth.in.billions~location.region, billionaires.2001, las=2, xlab="", ylab="", main="Prikaz raspona bogatstva po kontinentima 2001. godine", outline=FALSE)
+title(xlab="Kontinenti", line=6)
+title(ylab = "Raspon bogatstva", line=3)
+
+par(mar = c(10, 5, 3, 3), cex.axis=0.7)
+boxplot(wealth.worth.in.billions~location.region, billionaires.2014, las=2, xlab="", ylab="", main="Prikaz raspona bogatstva po kontinentima 2014. godine", outline=FALSE)
+title(xlab="Kontinenti", line=6)
+title(ylab = "Raspon bogatstva", line=3)
+```
+Na prikazu bez stršećih vrijednosti možemo vidjeti da za 1996. godinu Afrika, Azija i Europa imaju viši medijan od Sjeverne i Južne Amerike, a pritom daleko najniži medijan ima Južna Amerika. Za 2001. godinu medijani svih kontinenata su podjednaki, a za 2014. godinu izgleda da je medijan Europe i Sjeverne Amerike viši od medijana preostala tri kontinenta. Važno je istaknuti i da za 2001. te 2014. godinu Europa ima veoma velik IQR što upućuje na veliku varijabilnost podataka za taj kontinent.  
+  
+Kako bismo ove zaključke poduprli testiranjem, za sve tri godine pokušat ćemo provesti testiranje jednakosti sredina jednofaktorskom analizom varijance pri čemu će faktor biti parametar location.region. Da bismo mogli provoditi Anovu, trebale bi vrijediti sljedeće pretpostavke: populacije trebaju biti nezavisne i imati normalnu distribuciju, a varijance za svaku grupu trebale bi biti homogene. Ako ove pretpostavke nisu zadovoljene, moguće je koristiti i neparametarsku verziju testa, Kruskal-Wallisov test.  
+  
+Kako bismo testirali normalnost podataka, provest ćemo Lillieforsovu inačicu KS testa za sve grupe: u slučaju da je p-vrijednost manja od 0.05, odbacujemo nultu hipotezu da podaci potječu iz normalne distribucije. Kako bismo testirali homogenost varijance, provest ćemo Bartlettov test: u slučaju da je p-vrijednost manja od 0.05, odbacujemo nultu hipotezu da su varijance svih grupa podataka jednake. 
+
+
+```{r normality and homogenity of variance testing for continents, echo=FALSE}
+require(nortest)
+
+#1996
+
+cat("Test normalnosti podataka za 1996. godinu\n")
+lillie.test(billionaires.1996$wealth.worth.in.billions)
+
+# lillie.test(billionaires.1996$wealth.worth.in.billions[billionaires.1996$location.region=='Africa'])
+# lillie.test(billionaires.1996$wealth.worth.in.billions[billionaires.1996$location.region=='Asia'])
+# lillie.test(billionaires.1996$wealth.worth.in.billions[billionaires.1996$location.region=='Europe'])
+# lillie.test(billionaires.1996$wealth.worth.in.billions[billionaires.1996$location.region=='North America'])
+# lillie.test(billionaires.1996$wealth.worth.in.billions[billionaires.1996$location.region=='South America'])
+
+cat("Test za provjeru jednakosti varijanci za 1996. godinu\n")
+bartlett.test(billionaires.1996$wealth.worth.in.billions ~ billionaires.1996$location.region)
+```
+Zbog sažetosti prikaza, nije prikazano provođenje prikladnih testova za godine 2001. i 2014., a za godinu 1996. prikazan je rezultat provođenja Lillieforsove inačice KS testa nad cijelom populacijom (provedeni su i testovi za zasebne kontinente, ali je njihovo izvođenje zbog sažetosti zakomentirano), kao i rezultat provođenja Bartlettovog testa za homogenost varijanci. P-vrijednosti za sve testove manje su od 0.05.
+  
+Na razini značajnosti 0.05 zbog veoma niske p-vrijednosti odbacujemo nultu hipotezu Lillieforseove inačice KS testa za cijelu populaciju, ali i za pojedinačne grupe (za sve tri godine) - ne možemo pretpostaviti normalnost podataka. Isto tako, na istoj razini značajnosti odbacujemo i nultu hipotezu Bartlettovog testa (za sve tri godine) - ne možemo pretpostaviti homogenost varijanci. Na temelju ovih rezultata, možemo pretpostaviti da rezultat provođenja testova na temelju jednofaktorske Anove nije veoma vjerodostojan.  
+  
+Ipak, provest ćemo jednofaktorsku Anovu, oslanjajući se pritom na robustnost testa jednakosti sredina s nultom hipotezom da su srednje vrijednosti svih uzoraka jednake. Uz to, provest ćemo i Kruskal-Wallisov test čija je nulta hipoteza da su medijani svih uzoraka jednaki. Pritom treba paziti na uvjet za primjenjivost Kruskal-Wallisovog testa: veličina svakog uzorka mora biti barem 5. 
+
+```{r kruskal-wallis test and anova test for continents, echo=FALSE}
+#1996
+cat("Testovi za 1996. godinu (frekvencije po kontinentima: ", table(billionaires.1996$location.region), ")\n")
+a = aov(wealth.worth.in.billions~location.region, data=billionaires.1996)
+summary(a)
+kruskal.test(wealth.worth.in.billions~location.region, data=billionaires.1996)
+
+#2001
+cat("Testovi za 2001. godinu (frekvencije po kontinentima: ", table(billionaires.2001$location.region), ")\n")
+a = aov(wealth.worth.in.billions~location.region, data=billionaires.2001)
+summary(a)
+kruskal.test(wealth.worth.in.billions~location.region, data=billionaires.2001)
+
+#2014
+cat("Testovi za 2014. godinu (frekvencije po kontinentima: ", table(billionaires.2014$location.region), ")\n")
+a = aov(wealth.worth.in.billions~location.region, data=billionaires.2014)
+summary(a)
+kruskal.test(wealth.worth.in.billions~location.region, data=billionaires.2014)
+```
+Na razini značajnosti 0.05, za godine 1996. i 2014. odbacujemo H0 i za jednofaktorsku Anovu (srednje vrijednosti svih uzoraka su jednake), ali i za Kruskal-Wallisov test (medijani svih uzoraka su jednaki). Za 2001. godinu ne možemo odbaciti H0 ni za jedan od navedenih testova. Naravno, testovima ne možemo potvrditi H0 tj. reći da ona sigurno vrijedi, ali možemo reći da je velika vjerojatnost da su 2001. godine srednje vrijednosti i medijani bili otprilike jednaki, dok za preostale dvije godine nisu (1996. i 2014. godine postoje kontinenti koji imaju statistički značajno veću sredinu milijardi od ostalih). Uočavamo da Kruskal-Wallisov test kao rezultat ima manje p-vrijednosti od Anove.
+  
+Kako bismo potvrdili jesu li naše pretpostavke napravljene na temelju boxplota ispravne, dodatno bi mogli provesti i usporedbe s jednim stupnjem slobode.
+
+### 2. zadatak
+
+Kako bismo odredili postoji li značajna razlika u bogatstvu između ljudi koji su naslijedili bogatstvo i onih koji nisu, ponovno ćemo koristiti tablice koje predstavljaju broj milijardera ovisno o godini (na početku smo utvrdili da svi milijarderi imaju podatak o tome jesu li naslijedili bogatstvo, kao i o godini koje su bili na određenom ranku pa stoga nemamo potrebu za dodatnom eliminacijom podataka iz tablice).  
+  
+Za svaku od te tri godine, stvorit ćemo po 2 tablice - jedna će sadržavati podatke o onima koji su naslijedili bogatstvo, a druga o onima koji nisu. Zbog jednostavnijeg prikaza kasnije, vrijednosti atributa wealth.how.inherited zamijenit ćemo vrijednostima "inherited" te "not inherited".
+
+```{r priprema tablica inherited}
+billionaires.1996 <- billionaires[billionaires["year"] == 1996,]
+billionaires.2001 <- billionaires[billionaires["year"] == 2001,]
+billionaires.2014 <- billionaires[billionaires["year"] == 2014,]
+
+for (i in 1:length(billionaires.1996$wealth.how.inherited)) {
+  if (billionaires.1996$wealth.how.inherited[i] == "not inherited") {
+    next
+  } else {
+    billionaires.1996$wealth.how.inherited[i] <- "inherited"
+  } 
+}
+
+for (i in 1:length(billionaires.2001$wealth.how.inherited)) {
+  if (billionaires.2001$wealth.how.inherited[i] == "not inherited") {
+    next
+  } else {
+    billionaires.2001$wealth.how.inherited[i] <- "inherited"
+  } 
+}
+
+for (i in 1:length(billionaires.2014$wealth.how.inherited)) {
+  if (billionaires.2014$wealth.how.inherited[i] == "not inherited") {
+    next
+  } else {
+    billionaires.2014$wealth.how.inherited[i] <- "inherited"
+  } 
+}
+
+billionaires.1996.inherited <- billionaires.1996[billionaires.1996["wealth.how.inherited"] != "not inherited",]
+billionaires.1996.not.inherited <- billionaires.1996[billionaires.1996 ["wealth.how.inherited"] == "not inherited",]
+billionaires.2001.inherited <- billionaires.2001[billionaires.2001["wealth.how.inherited"] != "not inherited",]
+billionaires.2001.not.inherited <- billionaires.2001[billionaires.2001["wealth.how.inherited"] == "not inherited",]
+billionaires.2014.inherited <- billionaires.2014[billionaires.2014["wealth.how.inherited"] != "not inherited",]
+billionaires.2014.not.inherited <- billionaires.2014[billionaires.2014["wealth.how.inherited"] == "not inherited",]
+```
+
+Količinu bogatstva pojedinih milijardera prikazat ćemo histogramima.
+
+```{r histogrami naslijedstvo, echo=FALSE, out.height="80%", out.width="80%", fig.align="center"}
+hist(billionaires.1996.inherited$wealth.worth.in.billions, breaks=30, main='Prikaz frekvencije količina bogatstva za nasljednike', xlab='Količina bogatstva', ylab='Frekvencija')
+hist(billionaires.1996.not.inherited$wealth.worth.in.billions, breaks=30, main='Prikaz frekvencije količina bogatstva za one koji nisu naslijedili', xlab='Količina bogatstva', ylab='Frekvencija')
+```
+
+Prikaz stavljamo samo za jednu od godina zbog sažetosti - histogrami za preostale godine izgledaju veoma slično ovima. Za sve histograme uočavamo veoma izraženi desni rep. Kako bismo mogli provoditi F-test, kao i t-test, potrebna je barem približna normalnost podataka. Zbog toga ćemo podatke o iznosu bogatstva transformirati koristeći funkciju log.
+
+```{r podaci naslijedstvo transformirani, echo=FALSE, out.height="80%", out.width="80%", fig.align="center"}
+billionaires.1996.inherited.log = billionaires.1996.inherited
+billionaires.1996.inherited.log$wealth.worth.in.billions <- log(billionaires.1996.inherited.log$wealth.worth.in.billions)
+
+billionaires.1996.not.inherited.log = billionaires.1996.not.inherited
+billionaires.1996.not.inherited.log$wealth.worth.in.billions <-  log(billionaires.1996.not.inherited$wealth.worth.in.billions)
+
+billionaires.2001.inherited.log = billionaires.2001.inherited
+billionaires.2001.inherited.log$wealth.worth.in.billions <- log(billionaires.2001.inherited.log$wealth.worth.in.billions)
+
+billionaires.2001.not.inherited.log = billionaires.2001.not.inherited
+billionaires.2001.not.inherited.log$wealth.worth.in.billions <-  log(billionaires.2001.not.inherited$wealth.worth.in.billions)
+
+billionaires.2014.inherited.log = billionaires.2014.inherited
+billionaires.2014.inherited.log$wealth.worth.in.billions <- log(billionaires.2014.inherited.log$wealth.worth.in.billions)
+
+billionaires.2014.not.inherited.log = billionaires.2014.not.inherited
+billionaires.2014.not.inherited.log$wealth.worth.in.billions <-  log(billionaires.2014.not.inherited$wealth.worth.in.billions)
+
+hist(billionaires.1996.inherited.log$wealth.worth.in.billions, breaks=30, main='Prikaz frekvencije količina bogatstva za nasljednike', xlab='Količina bogatstva', ylab='Frekvencija')
+hist(billionaires.1996.not.inherited.log$wealth.worth.in.billions, breaks=30, main='Prikaz frekvencije količina bogatstva za one koji nisu naslijedili', xlab='Količina bogatstva', ylab='Frekvencija')
+```
+
+Kao i prethodni put, zbog sažetosti su prikazani histogrami samo za jednu godinu. Distribucija podataka sada je puno bliže normalnoj, ali je desni rep i dalje veoma izražen - teško je pretpostaviti normalnost podataka. Ovo ćemo provjeriti prikazivanjem Q-Q grafa za 1996. godinu.
+
+```{r qqgraph, echo=FALSE}
+qqnorm(billionaires.1996.inherited.log$wealth.worth.in.billions, pch = 1, main="Q-Q plot za distribuciju bogatstva kod nasljednika", xlab="Kvantili normalne distribucije", ylab="Kvantili raspodjele bogatstva")
+qqline(billionaires.1996.inherited.log$wealth.worth.in.billions, col = "steelblue", lwd = 2)
+
+qqnorm(billionaires.1996.not.inherited.log$wealth.worth.in.billions, pch = 1, main="Q-Q plot za distribuciju bogatstva kod onih kojih nisu naslijedili", xlab="Kvantili normalne distribucije", ylab="Kvantili raspodjele bogatstva")
+qqline(billionaires.1996.not.inherited.log$wealth.worth.in.billions, col = "steelblue", lwd = 2)
+```
+Na temelju prikazanih Q-Q grafova, vidimo da je distribucija čak i logaritmiranih iznosa bogatstva daleko od normalne. Q-Q grafovi izgledaju veoma slično i za preostale dvije godine, a zbog sažetosti ovdje nisu prikazani. Kako bismo dodatno provjerili možemo li provoditi daljnje testove s pretpostavkom normalnosti podataka, provest ćemo Lillieforsovu inačicu Kolmogorov-Smirnov testa.
+
+```{r lillieforse, echo=FALSE}
+require(nortest)
+cat("Lilliefors test za one koji su naslijedili bogatstvo, 1996. godina")
+lillie.test(billionaires.1996.inherited.log$wealth.worth.in.billions)
+cat("Lilliefors test za one koji nisu naslijedili bogatstvo, 1996. godina")
+lillie.test(billionaires.1996.not.inherited.log$wealth.worth.in.billions)
+
+cat("Lilliefors test za one koji su naslijedili bogatstvo, 2001. godina")
+lillie.test(billionaires.2001.inherited.log$wealth.worth.in.billions)
+cat("Lilliefors test za one koji nisu naslijedili bogatstvo, 1996. godina")
+lillie.test(billionaires.2001.not.inherited.log$wealth.worth.in.billions)
+
+cat("Lilliefors test za one koji su naslijedili bogatstvo, 2014. godina")
+lillie.test(billionaires.2014.inherited.log$wealth.worth.in.billions)
+cat("Lilliefors test za one koji nisu naslijedili bogatstvo, 2014. godina")
+lillie.test(billionaires.2014.not.inherited.log$wealth.worth.in.billions)
+```
+Na temelju rezultata izvođenja Lillieforsove inačice KS testa, zbog veoma male p-vrijednosti (manje od 0.05) odbacujemo H0: podaci dolaze iz normalne razdiobe (za obje skupine za sve tri godine). 
+
+U daljnjem testiranju oslanjat ćemo se na robustnost t-testa, ali ćemo nakon provođenja parametarskih testova provesti i neparametarske inačice. Uz dodatnu pretpostavku nezavisnosti podataka, sada ćemo provesti Fisherov test kako bismo odredili možemo li pri t-testu koristiti varijantu s jednakim varijancama.
+
+```{r fisher, echo=FALSE}
+cat("F-test za provjeru jednakosti varijanci, 1996. godina")
+var.test(billionaires.1996.inherited.log$wealth.worth.in.billions, billionaires.1996.not.inherited.log$wealth.worth.in.billions)
+
+cat("F-test za provjeru jednakosti varijanci, 2001. godina")
+var.test(billionaires.2001.inherited.log$wealth.worth.in.billions, billionaires.2001.not.inherited.log$wealth.worth.in.billions)
+
+cat("F-test za provjeru jednakosti varijanci, 2014. godina")
+var.test(billionaires.2014.inherited.log$wealth.worth.in.billions, billionaires.2014.not.inherited.log$wealth.worth.in.billions)
+```
+
+Za sva tri testa dobili smo p-vrijednost značajno veću od 0.05. Zbog toga ćemo pri provođenju t-testa ići s pretpostavkom da su varijance populacija jednake (ne odbacujemo H0 F-testa). Hipoteze pri provođenju t-testa nad dvije populacije biti će:  
+  
+H0: razlika srednjih vrijednosti između dviju populacija jednaka je 0  
+H1: razlika srednjih vrijednosti između dvije populacije veća je od 0  
+  
+pri čemu je prva populacija skupina milijardera koji su naslijedili bogatstvo, a druga populacija skupina milijardera koji nisu naslijedili bogatstvo.
+
+```{r t-test, echo=FALSE}
+cat("t-test za jednakost srednjih vrijednosti dvije populacije, 1996. godina")
+t.test(billionaires.1996.inherited.log$wealth.worth.in.billions, billionaires.1996.not.inherited.log$wealth.worth.in.billions, alt = "greater", var.equal = TRUE)
+
+cat("t-test za jednakost srednjih vrijednosti dvije populacije, 2001. godina")
+t.test(billionaires.2001.inherited.log$wealth.worth.in.billions, billionaires.2001.not.inherited.log$wealth.worth.in.billions, alt = "greater", var.equal = TRUE)
+
+cat("t-test za jednakost srednjih vrijednosti dvije populacije, 2014. godina")
+t.test(billionaires.2014.inherited.log$wealth.worth.in.billions, billionaires.2014.not.inherited.log$wealth.worth.in.billions, alt = "greater", var.equal = TRUE)
+```
+
+Rezultati provođenja t-testa nad dvije populacije s razinom značajnosti 0.05 upućuju na sljedeći zaključak:
+  
+-za godinu 1996 ne možemo odbaciti H0 - ne postoji značajna razlika između srednjih vrijednosti bogatstva onih koji su bogatstvo naslijedili i onih koji bogatstvo nisu naslijedili  
+  
+-za godinu 2001 odbacujemo H0 - postoji značajna razlika između srednjih vrijednosti bogatstva onih koji su bogatstvo naslijedili i onih koji bogatstvo nisu naslijedili (srednja vrijednost bogatstva onih koji su naslijedili bogatstvo vrlo je vjerojatno veća od srednje vrijednosti bogatstva onih koji nisu naslijedili)  
+  
+-za godinu 2014 odbacujemo H0 - postoji značajna razlika između srednjih vrijednosti bogatstva onih koji su bogatstvo naslijedili i onih koji bogatstvo nisu naslijedili (srednja vrijednost bogatstva onih koji su naslijedili bogatstvo vrlo je vjerojatno veća od srednje vrijednosti bogatstva onih koji nisu naslijedili)  
+  
+Uz to, uočavamo da je p-vrijednost za godinu 1996 ipak veoma blizu razini značajnosti pa je za tu godinu teško dati pouzdani zaključak - lako je moguće da bi s malo drugačijim datasetom rezultat bio odbacivanje H0. Provest ćemo i neparametarsku alternativu t-testu: Mann-Whitney-Wilcoxonov test sa sljedećim hipotezama:  
+  
+H0: medijani obje populacije jednaki su  
+H1: medijan prve populacije veći je od medijana druge populacije 
+  
+pri čemu je prva populacija skupina milijardera koji su bogatstvo naslijedili, a druga populacija skupina milijardera koji bogatstvo nisu naslijedili. Pretpostavka testa je da su uzorci iz istih distribucija (do na translaciju).
+
+```{r mww test, echo=FALSE}
+cat("MWW test, 1996. godina\n")
+wilcox.test(billionaires.1996.inherited$wealth.worth.in.billions, billionaires.1996.not.inherited$wealth.worth.in.billions, alternative= "greater")
+
+cat("MWW test, 2001. godina\n")
+wilcox.test(billionaires.2001.inherited$wealth.worth.in.billions, billionaires.2001.not.inherited$wealth.worth.in.billions, alternative= "greater")
+
+cat("MWW test, 2014. godina\n")
+wilcox.test(billionaires.2014.inherited$wealth.worth.in.billions, billionaires.2014.not.inherited$wealth.worth.in.billions, alternative= "greater")
+```
+Na razini značajnosti 0.05, odbacujemo H0 za sve tri godine - ne možemo pretpostaviti da je medijan bogatstva za one koji su naslijedili bogatstvo i one koji nisu naslijedili bogatstvo jednak. Budući da je H1 bio da je medijan onih koji su bogatstvo naslijedili veći od medijana onih koji bogatstvo nisu naslijedili, zaključujemo da je vrlo vjerojatno da su oni koji su naslijedili bogatstvo u prosjeku bogatiji od onih koji nisu. Ovo ćemo provjeriti koristeći prikaz boxplotom za zasebne godine, pritom prikazujući boxplot s i bez stršećih vrijednosti.
+
+```{r boxplot inherited noninherited, echo=FALSE, out.height="80%", out.width="80%", fig.align="center"}
+par(mar = c(5, 5, 3, 3), cex.axis=0.7)
+boxplot(wealth.worth.in.billions ~ wealth.how.inherited, data=billionaires.1996, xlab="", ylab="", main="Prikaz raspona bogatstva po faktoru nasljedstva za godinu 1996")
+title(xlab="Nasljedstvo", line=3)
+title(ylab = "Raspon bogatstva", line=3)
+
+par(mar = c(5, 5, 3, 3), cex.axis=0.7)
+boxplot(wealth.worth.in.billions ~ wealth.how.inherited, data=billionaires.1996, xlab="", ylab="", main="Prikaz raspona bogatstva po faktoru nasljedstva za godinu 1996", outline=FALSE)
+title(xlab="Nasljedstvo", line=3)
+title(ylab = "Raspon bogatstva", line=3)
+```
+Zbog sažetosti prikaza, prikazani su boxplotovi samo za 1996. godinu. Boxplotovi za preostale dvije godine veoma su slični ovima. Možemo uočiti da je medijan bogatstva kod onih koji su naslijedili bogatstvo viši od medijana onih koji bogatstvo nisu naslijedili. Uz to, možemo uočiti da u grupi onih koji bogatstvo nisu naslijedili ima puno više stršećih vrijednosti. Drugim riječima, u grupi onih koji bogatstvo nisu naslijedili ima velik broj milijardera čija količina bogatstva veoma odudara od prosjeka.
+
+\newpage
+
+### 3. zadatak
+Kako bismo provjerili koreliranost između određenih parametara i količine bogatstva, prvo ćemo provesti linearnu regresiju na zasebnim parametrima.  
+  
+U podacima smo uočili prisutnost 3 boolean varijable koje za svaki unos imaju vrijednost True. Zbog toga te varijable nećemo razmatrati pri provođenju linearne regresije. Uz to, kao regresor nećemo razmatrati rank jer je on ovisan o količini bogatstva, a ne obrnuto. Isto tako, nećemo razmatrati ni ime milijardera ni ime tvrtke - u pitanju su kategoričke varijable s veoma velikim brojem mogućih vrijednosti.  
+  
+Regresiju ćemo provoditi na setu podataka pročišćenom od svim neunesenih podataka (negativni brojevi, 0, prazan string) - neuneseni podaci u tablici će biti zamijenjeni vrijednošću NA. Uz to, na taj dataset primijenit ćemo transformaciju tako da uklonimo sve whitespace znakove s početka ili kraja stringova, kao i promijenimo sva slova u lowercase. Time će za određene kategorijske varijable biti ukupno manje kategorija (npr. "finance " i "Finance" bit će jedna kategorija).
+
+```{r linear regression, message=FALSE} 
+require(tidyverse)
+
+clean_string <- function(x) {
+  if (x == '' | (is.numeric(x) & x <= 0) | (is.character(x) & x == '0')) {
+    return (NA)
+  } else if (!is.numeric(x)) {
+    return (str_squish(tolower(x)))
+  } else {
+    return (x)
+  }
+}
+
+billionaires.unique <- billionaires
+
+for (i in 1:nrow(billionaires)) {
+  for (j in 1:length(billionaires)) {
+    billionaires.unique[i, j] <- clean_string(billionaires.unique[i, j])
+  }
+}
+
+```
+
+Nad pročišćenim podacima provest ćemo linearnu regresiju - prvo na zasebnim parametrima da odredimo parametre koji su značajni i sami po sebi, a nakon toga na kombinacijama parametara, pritom pokušavajući model ostaviti što jednostavnijim (što manje parametara).
+
+```{r linear models, echo=FALSE}
+# fit.year = lm(wealth.worth.in.billions~year, data=billionaires.unique)
+# summary(fit.year)
+# Multiple R-squared:  0.01057,	Adjusted R-squared:  0.01019 
+# F-statistic: 27.91 on 1 and 2612 DF,  p-value: 1.376e-07
+# znacajno
+
+# fit.company.founded = lm(wealth.worth.in.billions~company.founded, data=billionaires.unique)
+# summary(fit.company.founded)
+# Multiple R-squared:  7.369e-05,	Adjusted R-squared:  -0.0003151 
+# F-statistic: 0.1895 on 1 and 2572 DF,  p-value: 0.6633
+# nije znacajno
+
+# fit.company.relationship = lm(wealth.worth.in.billions~company.relationship, data=billionaires.unique)
+# summary(fit.company.relationship)
+# Multiple R-squared:  0.02619,	Adjusted R-squared:  9.29e-05 
+# F-statistic: 1.004 on 67 and 2500 DF,  p-value: 0.4699
+# nije znacajno
+
+# fit.company.sector = lm(wealth.worth.in.billions~company.sector, data=billionaires.unique)
+# summary(fit.company.sector)
+# Multiple R-squared:  0.1901,	Adjusted R-squared:  -0.003127 
+# F-statistic: 0.9838 on 499 and 2091 DF,  p-value: 0.5857
+# nije znacajno
+
+# fit.company.type = lm(wealth.worth.in.billions~company.type, data=billionaires.unique)
+# summary(fit.company.type)
+# Multiple R-squared:  0.02624,	Adjusted R-squared:  0.02093 
+# F-statistic: 4.934 on 14 and 2563 DF,  p-value: 3.878e-09
+# znacajno
+
+# fit.demographics.age = lm(wealth.worth.in.billions~demographics.age, data=billionaires.unique)
+# summary(fit.demographics.age)
+# Multiple R-squared:  0.007372,	Adjusted R-squared:  0.006926 
+# F-statistic: 16.54 on 1 and 2227 DF,  p-value: 4.933e-05
+# znacajno
+
+# fit.demographics.gender = lm(wealth.worth.in.billions~demographics.gender, data=billionaires.unique)
+# summary(fit.demographics.gender)
+# Multiple R-squared:  0.0005293,	Adjusted R-squared:  -0.0002464 
+# F-statistic: 0.6823 on 2 and 2577 DF,  p-value: 0.5055
+# nije znacajno
+
+# fit.location.citizenship = lm(wealth.worth.in.billions~location.citizenship, data=billionaires.unique)
+# summary(fit.location.citizenship)
+# Multiple R-squared:  0.02364,	Adjusted R-squared:  -0.004026 
+# F-statistic: 0.8545 on 72 and 2541 DF,  p-value: 0.8034
+# nije znacajno
+
+# skip code -> isto kao country
+
+# fit.location.region = lm(wealth.worth.in.billions~location.region, data=billionaires.unique)
+# summary(fit.location.region)
+# Residual standard error: 5.078 on 2606 degrees of freedom
+# Multiple R-squared:  0.006824,	Adjusted R-squared:  0.004537 
+# F-statistic: 2.984 on 6 and 2606 DF,  p-value: 0.006597
+# znacajno
+
+# fit.location.gdp = lm(wealth.worth.in.billions~location.gdp, data=billionaires.unique)
+# summary(fit.location.gdp)
+# Multiple R-squared:  0.002278,	Adjusted R-squared:  0.001224 
+# F-statistic: 2.162 on 1 and 947 DF,  p-value: 0.1418
+# nije znacajno
+
+# fit.wealth.type = lm(wealth.worth.in.billions~wealth.type, data=billionaires.unique)
+# summary(fit.wealth.type)
+# Multiple R-squared:  0.005098,	Adjusted R-squared:  0.00356 
+# F-statistic: 3.314 on 4 and 2587 DF,  p-value: 0.01021
+# znacajno
+
+# fit.wealth.how.category = lm(wealth.worth.in.billions~wealth.how.category, data=billionaires.unique)
+# summary(fit.wealth.how.category)
+# Multiple R-squared:  0.003539,	Adjusted R-squared:  0.0007712 
+# F-statistic: 1.279 on 7 and 2520 DF,  p-value: 0.2568
+# nije znacajno
+
+# fit.wealth.how.industry = lm(wealth.worth.in.billions~wealth.how.industry, data=billionaires.unique)
+# summary(fit.wealth.how.industry)
+# Multiple R-squared:  0.01619,	Adjusted R-squared:  0.009705 
+# F-statistic: 2.497 on 17 and 2579 DF,  p-value: 0.0006239
+# znacajno
+
+# fit.wealth.how.inherited = lm(wealth.worth.in.billions~wealth.how.inherited, data=billionaires.unique)
+# summary(fit.wealth.how.inherited)
+# Multiple R-squared:  0.004474,	Adjusted R-squared:  0.002565 
+# F-statistic: 2.344 on 5 and 2608 DF,  p-value: 0.03913
+# znacajno
+```
+
+Zbog sažetosti, provođenje linearne regresije na po 1 regresoru nije prikazano. Provođenjem linearne regresije na po 1 regresoru, bilo numeričkom ili kategoričkom, dolazimo do zaključka da su samostalno statistički značajni parametri year, company.type, demographics.age, location.region, wealth.type, wealth.how.industry, wealth.how.inherited. 
+  
+Kombinacijom regresora pokušat ćemo postići objašnjenje većeg postotka varijance modelom, pritom koristeći R^2 i prilagođeni R^2 kao glavnu metriku.
+
+```{r kombinacije lr}
+#### Kombinirano
+
+# svi parametri
+# fit.combined = lm(log(wealth.worth.in.billions)~year + company.founded + company.relationship + company.sector + company.type + demographics.age + demographics.gender + location.gdp + location.region + wealth.type + wealth.how.category + wealth.how.industry + wealth.how.inherited, data=billionaires.unique)
+# summary(fit.combined)
+# Multiple R-squared:  0.4624,	Adjusted R-squared:  0.1595 
+# F-statistic: 1.527 on 218 and 387 DF,  p-value: 0.0001597
+# vecina unosa deleted zbog NA kod location.gdp
+
+
+# minimalni model 
+
+# fit.combined = lm(log(wealth.worth.in.billions)~year + company.relationship + company.sector + demographics.age, data=billionaires.unique)
+# summary(fit.combined)
+# Multiple R-squared:  0.3505,	Adjusted R-squared:  0.1546 
+# F-statistic: 1.789 on 515 and 1708 DF,  p-value: < 2.2e-16
+```
+  
+Zbog sažetosti i preglednosti, kod za provođenje linearne regresije i prikaz sažetka o modelima zakomentiran je.
+Kombiniranjem različitih regresora pri provođenju linearne regresije moguće je objasniti veći postotak ukupne varijance. Pritom je potrebno pokušavati postići što jednostavniji model kod kojeg bi regresori međusobno trebali biti neovisni. Kako bismo modelom objasnili što veći udio varijance, transformirali smo izlaz tj. zavisnu varijablu log-transformacijom.
+  
+Kombinacijom parametara year, company.relationship, company.sector i demographics.age kao regresora dobivamo iznos R^2 = 0.3505 i iznos prilagođenog R^2 = 0.1546. Prilagođeni R^2 značajno je niži zbog veoma visokog broja razina (engl. levels) kategorijske varijable company.sector od kojih nisu sve jednako značajne za model.
+  
+U slučaju da koristimo zakomentirani model s 13 parametara, iznos R^2 bio bi jednak 0.4624, ali korištenjem tog modela uvodimo prevelik broj parametara - cilj nam je na kraju koristiti što jednostavniji model (jedan od razloga za ovo je želja za izbjegavanjem pojave da model dobro predviđa samo za ovaj konkretni skup podataka - unosom novih podataka model bi mogao imati puno lošija previđanja). U modelu s 4 gore navedenih parametara, sva 4 parametra veoma utječu na iznos R^2 i iznos prilagođenog R^2. Izostavljanjem pojedinih parametara, posebice parametara company.relationship i company.sector, udio varijance objašnjene modelom značajno pada. Značajnost pojedinih parametara provjerit ćemo korištenjem funkcije anova:
+
+```{r check if all parameters are significant, echo=FALSE}
+model = lm(log(wealth.worth.in.billions)~year + company.relationship + company.sector + demographics.age, data=billionaires.unique)
+anova(model)
+```
+Na temelju rezultata dobivenih korištenjem funkcije anova, vidimo da su na razini značajnosti od 0.05 sva četiri parametra veoma značajna u modelu, a da najveću količinu varijance objašnjavaju parametri company.relationship i company.sector. Naravno, treba razmišljati o tome da Anova kao pretpostavku ima normalnost podataka iz svih populacija, kao i homoskedastičnost varijanci. Za trenutni skup podataka, već znamo da je normalnost narušena pa rezultati provođenja Anova postupka nisu nužno vjerodostojni.  
+  
+Za provođenje dodatnih testova koristeći naš model, trebali bismo provjeriti svojstva reziduala - očekujemo da su reziduali homogeni, nezavisni i normalno distribuirani. U slučaju da ove pretpostavke ne vrijede, narušena je vjerodostojnost dodatnih testova provedenih koristeći naš model. Kako bismo provjerili svojstva reziduala našeg modela, prikazat ćemo standardizirane reziduale pomoću histograma, Q-Q grafa, a provest ćemo i Lillieforsovu inačicu KS testa.
+
+```{r residuals testing, echo=FALSE, out.height="80%", out.width="80%", fig.align="center"}
+model = lm(log(wealth.worth.in.billions)~year + company.relationship + company.sector + demographics.age, data=billionaires.unique)
+
+hist(rstandard(model), main="Prikaz distribucije standardiziranih reziduala", xlab="Iznos reziduala", ylab="Frekvencija")
+
+qqnorm(rstandard(model), pch = 1, main="Q-Q plot za standardizirane reziduale modela", xlab="Kvantili normalne distribucije", ylab="Kvantili reziduala modela")
+qqline(rstandard(model), col = "steelblue", lwd = 2)
+
+plot(model$fitted.values,model$residuals, main="Prikaz iznosa reziduala za predviđene vrijednosti modela", xlab="Predviđene vrijednosti modela", ylab="Reziduali modela")
+
+cat("Lilliefors test za normalnost standardiziranih reziduala")
+lillie.test(rstandard(model))
+```
+
+Iz histograma, Q-Q grafa i Lilliforsove inačice KS testa vidljivo je da reziduali nisu normalno distribuirani (izražen dugačak desni rep distribucije reziduala) - u slučaju provođenja dodatnih testova s modelom, vjerodostojnost testova bi bila veoma narušena.  
+  
+Na temelju iznosa R^2 = 0.3505 vidimo da naš konačni model s 4 regresora uspješno objašnjava 35.05% varijance u iznosu logaritmirane zavisne varijable wealth.worth.in.billions. Drugim riječima, našim modelom mogao bi se pokušati predvidjeti logaritmiran iznos bogatstva određenog milijardera na temelju vrijednosti regresora, ali ta vrijednost vjerojatno ne bi bila veoma precizna - što višu količinu varijance model objašnjava, veća je preciznost samih predikcija. Nažalost, veoma je malen broj parametara s brojčanom vrijednošću pa je stoga model teško poboljšati koristeći transformacije ulaznih podataka (npr. kvadriranje ulaznih vrijednosti nekog parametra), kao i koristeći interakcijske članove (npr. umnožak vrijednosti dva parametra).
+
+### 4. zadatak
+
+Kako bismo mogli odabrati karijeru po kriteriju da se obogatimo, provest ćemo linearnu regresiju s regresorom wealth.how.industry i zavisnom varijablom wealth.worth.in.billions. Pritom ćemo kao dataset koristiti podatke koje smo pripremili za provođenje linearne regresije čišćenjem stringova i zamjenom praznih stringova, negativnih vrijednosti i vrijednosti nula vrijednošću NA.
+
+\newpage
+```{r wealth by industry, echo=FALSE}
+fit.industry = lm(wealth.worth.in.billions~wealth.how.industry, data=billionaires.unique)
+summary(fit.industry)
+```
+
+Provjerit ćemo izgled reziduala za dobiveni model na isti način kao i u prethodnom zadatku.
+
+```{r residuals for wealth by industry, echo=FALSE, out.height="80%", out.width="80%", fig.align='center'}
+hist(rstandard(fit.industry), main="Prikaz distribucije standardiziranih reziduala", xlab="Iznos reziduala", ylab="Frekvencija")
+
+qqnorm(rstandard(fit.industry), pch = 1, main="Q-Q plot za standardizirane reziduale modela", xlab="Kvantili normalne distribucije", ylab="Kvantili reziduala modela")
+qqline(rstandard(fit.industry), col = "steelblue", lwd = 2)
+
+plot(fit.industry$fitted.values,fit.industry$residuals, main="Prikaz iznosa reziduala za predviđene vrijednosti modela", xlab="Predviđene vrijednosti modela", ylab="Reziduali modela")
+
+cat("Lilliefors test za normalnost standardiziranih reziduala")
+lillie.test(rstandard(fit.industry))
+```
+Vidimo da kao niti u prethodnome zadatku, reziduali nisu normalno distribuirani. Uz to, vidljiva je i razlika u varijabilnosti reziduala ovisno o konkretnoj industriji. Zbog nezadovoljenih pretpostavki o rezidualima, moramo razmišljati o tome da dodatni testovi provedeni koristeći ovaj model nisu nužno vjerodostojni. 
+  
+Kako bismo odabrali industriju kojom bi se bavili s ciljem da se obogatimo, proučavat ćemo konkretne industrije koje su u regresiji bile što značajnije (što manji iznos p-vrijednosti t-testa s "H0: regresijski koeficijent za određenu industriju je jednak 0"), a istovremeno imaju i visoki iznos procjene regresijskog koeficijenta. Konkretno, to su sljedeće industrije: "technology-computer", "retail, restaurant", "diversified financial", "media" te "consumer" . Za iste ćemo prikazati raspon bogatstva koristeći boxplot.
+
+```{r boxplot for wealth by industry, echo=FALSE, out.height="80%", out.width="80%", fig.align='center'}
+billionaires.best.industry <- filter(billionaires.unique, wealth.how.industry %in% c("technology-computer", "retail, restaurant", "diversified financial", "media", "consumer"))
+
+par(mar = c(8, 5, 3, 3), cex.axis=0.7)
+boxplot(wealth.worth.in.billions~wealth.how.industry, data=billionaires.best.industry, main="Prikaz raspona bogatstva za različite industrije", las=2, xlab="", ylab="", outline=TRUE)
+title(xlab="Različite industrije", line=6)
+title(ylab = "Raspon bogatstva", line=3)
+
+par(mar = c(8, 5, 3, 3), cex.axis=0.7)
+boxplot(wealth.worth.in.billions~wealth.how.industry, data=billionaires.best.industry, main="Prikaz raspona bogatstva za različite industrije", las=2, xlab="", ylab="", outline=FALSE)
+title(xlab="Različite industrije", line=6)
+title(ylab = "Raspon bogatstva", line=3)
+```
+Na temelju prikazanih boxplotova, mogli bismo zaključiti da je medijan za ovih 5 industrija otprilike jednak. Kako bismo provjerili ovu tvrdnju, provest ćemo testiranje jednakosti sredina jednofaktorskom analizom varijance pri čemu će faktor biti parametar wealth.how.industry, ali samo s 5 razina - 5 odabranih industrija. Da bismo mogli provoditi Anovu, trebale bi vrijediti već navedene pretpostavke: populacije trebaju biti nezavisne i imati normalnu distribuciju, a varijance za svaku grupu trebale bi biti homogene. Ako ove pretpostavke nisu zadovoljene, test gubi na vjerodostojnosti - u tom slučaju moguće je koristiti i neparametarsku verziju testa, Kruskal-Wallisov test.  
+  
+Kako bismo testirali normalnost podataka, provest ćemo Lillieforsovu inačicu KS testa za sve grupe: u slučaju da je p-vrijednost manja od 0.05, odbacujemo nultu hipotezu da podaci potječu iz normalne distribucije. Kako bismo testirali homogenost varijance, provest ćemo Bartlettov test: u slučaju da je p-vrijednost manja od 0.05, odbacujemo nultu hipotezu da su varijance svih grupa podataka jednake. 
+
+```{r normality and homogenity of variance for anova best industries, echo=FALSE}
+cat("Lilliefors test za normalnost podataka iz industrije: technology-computer")
+lillie.test(billionaires.best.industry$wealth.worth.in.billions[billionaires.best.industry$wealth.how.industry == "technology-computer"])
+
+cat("Lilliefors test za normalnost podataka iz industrije: retail, restaurant")
+lillie.test(billionaires.best.industry$wealth.worth.in.billions[billionaires.best.industry$wealth.how.industry == "retail, restaurant"])
+
+cat("Lilliefors test za normalnost podataka iz industrije: diversified financial")
+lillie.test(billionaires.best.industry$wealth.worth.in.billions[billionaires.best.industry$wealth.how.industry == "diversified financial"])
+
+cat("Lilliefors test za normalnost podataka iz industrije: media")
+lillie.test(billionaires.best.industry$wealth.worth.in.billions[billionaires.best.industry$wealth.how.industry == "media"])
+
+cat("Lilliefors test za normalnost podataka iz industrije: consumer")
+lillie.test(billionaires.best.industry$wealth.worth.in.billions[billionaires.best.industry$wealth.how.industry == "consumer"])
+
+cat("Bartlett test za provjeru jednakosti varijanci")
+bartlett.test(billionaires.best.industry$wealth.worth.in.billions ~ billionaires.best.industry$wealth.how.industry)
+```
+Rezultat provođenja Lillieforsove inačice KS testa za svih 5 razina daje veoma sličan rezultat - p-vrijednost je za sve razine značajno manja od 0.05. Na razini značajnosti 0.05, odbacujemo nultu hipotezu Lillieforsove inačice KS testa - ne možemo pretpostaviti da podaci dolaze iz normalne distribucije.  
+  
+Isto tako, odbacujemo i nultu hipotezu Bartlettovog testa - ne možemo pretpostaviti jednakost varijanci. Zbog navedenih kršenja pretpostavke, provest ćemo Kruskal-Wallisov test s nultom hipotezom jednakosti medijana za svih 5 uzoraka (pritom pazeći na uvjet veličine uzoraka od barem 5). Kako bismo rezultat provođenja Kruskal-Wallisovog testa mogli usporediti, provest ćemo i jednofaktorsku Anovu, pritom se oslanjajući na robustnost testa.
+
+```{r kruskal for best industry, echo=FALSE}
+cat("Frekvencije po industrijama: ", table(billionaires.best.industry$wealth.how.industry))
+kruskal.test(wealth.worth.in.billions~wealth.how.industry, data=billionaires.best.industry)
+cat("ANOVA")
+a = aov(wealth.worth.in.billions~wealth.how.industry, data=billionaires.best.industry)
+summary(a)
+```
+Na razini značajnosti 0.05, ne možemo odbaciti nultu hipotezu Kruskal-Wallisovog testa, kao ni nultu hipotezu testa jednakosti sredina jednofaktorskom analizom varijance. Drugim riječima, zaključujemo da su vrlo vjerojatno medijani iznosa bogatstva odabranih 5 industrija otprilike jednaki. Zbog toga, svejedno je koju ćemo od navedenih industrija odabrati, ali je bitno da odaberemo jednu od tih 5 industrija, a ne neku od ostalih. Kako bismo to dokazali, za kraj ćemo provesti i Kruskal-Wallisov test za sve industrije.
+
+```{r kruskal for all industries, echo=FALSE}
+cat("Frekvencije pojedinih industrija: ", table(billionaires.unique$wealth.how.industry))
+kruskal.test(wealth.worth.in.billions~wealth.how.industry, data=billionaires.unique)
+```
+Na razini značajnosti 0.05, odbacujemo nultu hipotezu Kruskal-Wallisovog testa - ne možemo zaključiti da je medijan iznosa bogatstva jednak za sve industrije. U obzir treba uzeti i činjenicu da dvije grupe imaju frekvenciju manju od 5 - takve grupe bi se mogle izbaciti kako bi test bio pouzdaniji, no zbog sažetosti prikaza provođenje testa nad takvoj, pročišćenoj tablici, nije prikazan (p-vrijednost ispada neznatno drugačija: 0.001048 pa stoga zaključak nakon provođenja testa ostaje isti).
+  
+Oslanjajući se na iznos regresijskog koeficijenta za industriju "technology-computer", p-vrijednost provođenja t-testa, kao i prikaz na boxplotu, odabrali bismo karijeru u industriji "technology-computer". Kao drugi izbor na temelju regresijskog koeficijenta, p-vrijednosti provođenja t-testa i prikaza na boxplotu, odabrali bismo karijeru u industriji "diversified financial".
